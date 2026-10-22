@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>prosto igra lol — adofai style</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #05050c;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    color: #fff; user-select: none;
+  }
+  #gameContainer { position: relative; width: 100vw; height: 100vh; }
+  canvas { display: block; }
+
+  .screen {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 40%, #14142a 0%, #05050c 75%);
+    z-index: 10;
+  }
+  .screen.hidden { display: none; }
+
+  .title {
+    font-size: clamp(2.2rem, 7vw, 4.5rem);
+    font-weight: 900; letter-spacing: 5px;
+    background: linear-gradient(90deg, #ff2d55, #ff6b8a, #4d7dff, #2d5bff);
+    -webkit-background-clip: text; background-clip: text;
+    color: transparent; text-align: center; margin-bottom: 8px;
+    filter: drop-shadow(0 0 30px rgba(255,45,85,0.4));
+    animation: pulseGlow 4s ease-in-out infinite;
+  }
+  @keyframes pulseGlow {
+    0%,100% { filter: drop-shadow(0 0 30px rgba(255,45,85,0.4)); }
+    50% { filter: drop-shadow(0 0 50px rgba(77,125,255,0.6)); }
+  }
+  .subtitle {
+    color: #5a5a7a; font-size: 0.8rem; letter-spacing: 3px;
+    margin-bottom: 45px; text-transform: uppercase;
+  }
+
+  .btn {
+    padding: 14px 42px; font-size: 1rem; font-weight: 700;
+    letter-spacing: 2px; border: 2px solid rgba(100,120,255,0.15);
+    border-radius: 14px; background: rgba(40,50,120,0.15);
+    color: #fff; cursor: pointer; transition: all 0.25s ease;
+    backdrop-filter: blur(12px); min-width: 230px; margin: 5px;
+    text-transform: uppercase;
+  }
+  .btn:hover {
+    background: rgba(60,80,200,0.2);
+    border-color: rgba(120,150,255,0.5);
+    transform: translateY(-2px);
+  }
+  .btn.easy:hover { border-color: #4d7dff; box-shadow: 0 8px 30px rgba(77,125,255,0.35); }
+  .btn.medium:hover { border-color: #8a5cff; box-shadow: 0 8px 30px rgba(138,92,255,0.35); }
+  .btn.hard:hover { border-color: #ff2d55; box-shadow: 0 8px 30px rgba(255,45,85,0.35); }
+  .btn.small { padding: 9px 22px; font-size: 0.75rem; min-width: auto; }
+
+  .toggle-row {
+    display: flex; align-items: center; gap: 12px;
+    margin-top: 30px; color: #7a7a9a; font-size: 0.85rem;
+  }
+  .switch {
+    position: relative; width: 52px; height: 28px;
+    background: rgba(80,90,160,0.2);
+    border-radius: 14px; cursor: pointer; transition: background 0.2s;
+  }
+  .switch.on { background: #4d7dff; }
+  .switch::after {
+    content: ''; position: absolute; top: 3px; left: 3px;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: #fff; transition: transform 0.2s;
+  }
+  .switch.on::after { transform: translateX(24px); }
+
+  .loss-title {
+    font-size: clamp(2rem, 6vw, 3.5rem); font-weight: 900;
+    color: #ff2d55; margin-bottom: 16px; text-align: center;
+    text-shadow: 0 0 40px rgba(255,45,85,0.6);
+  }
+  .loss-phrase {
+    font-size: clamp(1rem, 2.8vw, 1.3rem); color: #c8c8e0;
+    margin: 8px 0; text-align: center; font-style: italic;
+    animation: fadeUp 0.4s ease;
+  }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  .score-text { color: #7da0ff; margin: 14px 0 24px; font-size: 1.05rem; }
+
+  .hud {
+    position: absolute; top: 16px; left: 18px; z-index: 5;
+    color: #fff; font-size: 0.85rem; opacity: 0.6;
+    pointer-events: none; font-variant-numeric: tabular-nums;
+  }
+
+  .hint {
+    position: absolute; bottom: 18px; width: 100%;
+    text-align: center; color: #4a4a6a; font-size: 0.75rem;
+    z-index: 5; pointer-events: none; letter-spacing: 2px;
+  }
+
+  .back-btn { position: absolute; top: 16px; right: 16px; z-index: 20; }
+  .judge-text {
+    position: absolute; top: 42%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 1.6rem; font-weight: 900; letter-spacing: 3px;
+    pointer-events: none; z-index: 6; opacity: 0;
+    transition: opacity 0.15s;
+  }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="canvas"></canvas>
+  <div class="judge-text" id="judgeText"></div>
+
+  <!-- МЕНЮ -->
+  <div class="screen" id="menuScreen">
+    <h1 class="title">prosto igra lol</h1>
+    <p class="subtitle">a dance of fire and ice — one button rhythm</p>
+    <button class="btn easy" data-diff="easy">Простой</button>
+    <button class="btn medium" data-diff="medium">Средний</button>
+    <button class="btn hard" data-diff="hard">Сложный</button>
+    <div class="toggle-row">
+      <span>Музыка</span>
+      <div class="switch on" id="musicToggle"></div>
+    </div>
+  </div>
+
+  <!-- ПРОИГРЫШ -->
+  <div class="screen hidden" id="lossScreen">
+    <div class="loss-title">ТЫ ПРОИГРАЛ!</div>
+    <div class="score-text" id="lossScore"></div>
+    <div class="loss-phrase" id="lossPhrase"></div>
+    <button class="btn" id="retryBtn" style="margin-top:30px;">Ещё раз</button>
+    <button class="btn small" id="toMenuBtn" style="margin-top:8px;">В меню</button>
+  </div>
+
+  <div class="hud" id="hud"></div>
+  <div class="hint">ПРОБЕЛ / КЛИК — нажать в такт</div>
+  <button class="btn small back-btn hidden" id="backBtn">Выход</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ==================== КАНВАС ====================
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  let W = 0, H = 0;
+  function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+  addEventListener('resize', resize); resize();
+
+  // ==================== АУДИО ====================
+  let audioCtx = null;
+  let musicEnabled = true;
+  let musicTimer = null;
+  let musicBeatCount = 0;
+
+  function initAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+
+  function playTone(freq, dur, type = 'sine', vol = 0.12) {
+    if (!audioCtx) return;
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + dur);
+  }
+
+  // Красно-синие тональные шкалы (минорные для драматизма)
+  const scales = {
+    easy:   [220.00, 261.63, 293.66, 329.63, 392.00], // A minor pentatonic
+    medium: [246.94, 293.66, 329.63, 369.99, 440.00], // B minor
+    hard:   [261.63, 311.13, 349.23, 392.00, 466.16]  // C minor
+  };
+  const bpms = { easy: 90, medium: 120, hard: 150 };
+
+  function startMusic(diff) {
+    stopMusic();
+    if (!musicEnabled) return;
+    initAudio();
+    const scale = scales[diff];
+    const bpm = bpms[diff];
+    const interval = 60000 / bpm;
+    musicBeatCount = 0;
+    musicTimer = setInterval(() => {
+      if (!musicEnabled) return;
+      const beat = musicBeatCount % 4;
+      // Бас — низкий, «синий»
+      playTone(scale[0] / 2, interval / 1000 * 0.9, 'triangle', 0.1);
+      // Мелодия — чередование «огня» (высокие) и «льда» (низкие)
+      if (beat === 0) playTone(scale[2], 0.18, 'sine', 0.06);
+      if (beat === 1) playTone(scale[4], 0.15, 'sine', 0.05);
+      if (beat === 2) playTone(scale[1], 0.18, 'sine', 0.06);
+      if (beat === 3) playTone(scale[3], 0.15, 'sine', 0.05);
+      musicBeatCount++;
+    }, interval);
+  }
+  function stopMusic() { if (musicTimer) { clearInterval(musicTimer); musicTimer = null; } }
+
+  function playHitSound() { playTone(660, 0.06, 'square', 0.05); }
+  function playFailSound() { playTone(110, 0.6, 'sawtooth', 0.18); }
+
+  // ==================== КОНФИГ УРОВНЕЙ ====================
+  const configs = {
+    easy:   { bpm: 90,  tileAngle: 180, tolerance: 0.5,  pathLen: 30, gap: 1.15 },
+    medium: { bpm: 120, tileAngle: 120, tolerance: 0.38, pathLen: 40, gap: 1.05 },
+    hard:   { bpm: 150, tileAngle: 90,  tolerance: 0.28, pathLen: 50, gap: 0.95 }
+  };
+
+  // ==================== СОСТОЯНИЕ ====================
+  const state = {
+    running: false,
+    difficulty: null,
+    elapsed: 0,
+    startTime: 0,
+    score: 0,
+    combo: 0,
+    maxCombo: 0,
+    tilesPassed: 0,
+    best: +(localStorage.getItem('prosto_best') || 0)
+  };
+
+  // ==================== ПУТЬ ====================
+  const path = [];
+  const orbit = {
+    centerIdx: 0,
+    angle: 0,
+    direction: 1,
+    orbitRadius: 30,
+    rotating: true,
+    stationaryIsFire: true
+  };
+
+  const TILE_SIZE = 38;
+
+  function generatePath(diff) {
+    path.length = 0;
+    const cfg = configs[diff];
+    let x = W * 0.28, y = H * 0.6;
+    let baseAngle = 0;
+
+    path.push({ x, y, angle: 0, passed: false, isStart: true });
+
+    for (let i = 1; i < cfg.pathLen; i++) {
+      const turn = (Math.random() - 0.5) * 90;
+      baseAngle += turn;
+      if (y < H * 0.18) baseAngle = 30;
+      if (y > H * 0.85) baseAngle = -30;
+      if (x > W * 0.88) baseAngle = 150;
+      if (x < W * 0.12) baseAngle = 30;
+
+      const rad = baseAngle * Math.PI / 180;
+      // Меньшее расстояние между плитками
+      x += Math.cos(rad) * TILE_SIZE * cfg.gap;
+      y += Math.sin(rad) * TILE_SIZE * cfg.gap;
+
+      x = Math.max(W * 0.1, Math.min(W * 0.9, x));
+      y = Math.max(H * 0.18, Math.min(H * 0.85, y));
+
+      path.push({
+        x, y,
+        angle: baseAngle,
+        passed: false,
+        beatAngle: cfg.tileAngle
+      });
+    }
+  }
+
+  // ==================== ИНИЦИАЛИЗАЦИЯ ====================
+  function startGame(diff) {
+    initAudio();
+    state.difficulty = diff;
+    state.running = true;
+    state.score = 0;
+    state.combo = 0;
+    state.maxCombo = 0;
+    state.tilesPassed = 0;
+    state.startTime = performance.now();
+
+    generatePath(diff);
+
+    orbit.centerIdx = 0;
+    orbit.angle = 0;
+    orbit.direction = 1;
+    orbit.rotating = true;
+    orbit.stationaryIsFire = true;
+    orbit.orbitRadius = TILE_SIZE * 0.85;
+
+    path[0].passed = true;
+
+    document.getElementById('menuScreen').classList.add('hidden');
+    document.getElementById('lossScreen').classList.add('hidden');
+    document.getElementById('backBtn').classList.remove('hidden');
+    document.getElementById('judgeText').style.opacity = 0;
+
+    startMusic(diff);
+  }
+
+  // ==================== ВВОД ====================
+  let lastTapTime = 0;
+  const TAP_COOLDOWN = 80;
+
+  function handleTap() {
+    if (!state.running || !orbit.rotating) return;
+    const now = performance.now();
+    if (now - lastTapTime < TAP_COOLDOWN) return;
+    lastTapTime = now;
+
+    const cfg = configs[state.difficulty];
+    const nextIdx = orbit.centerIdx + 1;
+    if (nextIdx >= path.length) { winGame(); return; }
+
+    const center = path[orbit.centerIdx];
+    const next = path[nextIdx];
+    const idealAngle = Math.atan2(next.y - center.y, next.x - center.x);
+
+    let diffAngle = orbit.angle - idealAngle;
+    while (diffAngle > Math.PI) diffAngle -= Math.PI * 2;
+    while (diffAngle < -Math.PI) diffAngle += Math.PI * 2;
+
+    const absDiff = Math.abs(diffAngle);
+    const toleranceRad = cfg.tolerance * Math.PI;
+
+    if (absDiff <= toleranceRad) {
+      const accuracy = 1 - absDiff / toleranceRad;
+      let points = Math.floor(10 + accuracy * 90);
+      points = Math.floor(points * (1 + state.combo * 0.02));
+
+      state.score += points;
+      state.combo++;
+      state.maxCombo = Math.max(state.maxCombo, state.combo);
+      state.tilesPassed++;
+
+      path[nextIdx].passed = true;
+
+      orbit.centerIdx = nextIdx;
+      orbit.angle = 0;
+      orbit.stationaryIsFire = !orbit.stationaryIsFire;
+      if (Math.random() < 0.5) orbit.direction *= -1;
+
+      showJudgement(accuracy);
+      playHitSound();
+
+      if (nextIdx >= path.length - 1) setTimeout(winGame, 300);
+    } else {
+      gameOver('miss');
+    }
+  }
+
+  function showJudgement(accuracy) {
+    const el = document.getElementById('judgeText');
+    let text, color;
+    if (accuracy > 0.85) { text = 'PERFECT'; color = '#ff2d55'; }
+    else if (accuracy > 0.5) { text = 'GOOD'; color = '#8a5cff'; }
+    else { text = 'OK'; color = '#4d7dff'; }
+    el.textContent = text;
+    el.style.color = color;
+    el.style.opacity = 1;
+    el.style.transform = 'translate(-50%, -50%) scale(1.1)';
+    setTimeout(() => { el.style.opacity = 0; }, 300);
+  }
+
+  // ==================== ОБНОВЛЕНИЕ ====================
+  function update(dt) {
+    if (!state.running) return;
+    state.elapsed = performance.now() - state.startTime;
+
+    const cfg = configs[state.difficulty];
+    const secondsPerOrbit = 2 * (60 / cfg.bpm);
+    const angularSpeed = (Math.PI * 2) / secondsPerOrbit;
+
+    if (orbit.rotating) {
+      orbit.angle += angularSpeed * dt * orbit.direction;
+      if (Math.abs(orbit.angle) > Math.PI * 2 * 1.05) {
+        gameOver('overload');
+      }
+    }
+  }
+
+  // ==================== ПРОИГРЫШ / ПОБЕДА ====================
+  function gameOver(reason) {
+    if (!state.running) return;
+    state.running = false;
+    stopMusic();
+    playFailSound();
+    document.getElementById('judgeText').style.opacity = 0;
+    setTimeout(() => showLossScreen(reason), 500);
+  }
+
+  function winGame() {
+    if (!state.running) return;
+    state.running = false;
+    stopMusic();
+    document.getElementById('judgeText').style.opacity = 0;
+    setTimeout(() => {
+      const lossScreen = document.getElementById('lossScreen');
+      lossScreen.querySelector('.loss-title').textContent = 'ПОБЕДА!';
+      lossScreen.querySelector('.loss-title').style.color = '#4d7dff';
+      document.getElementById('lossPhrase').textContent = 'Ты прошёл! Неплохо для дузера.';
+      document.getElementById('lossScore').textContent =
+        `Счёт: ${state.score} | Макс. комбо: x${state.maxCombo} | Плиток: ${state.tilesPassed}`;
+      lossScreen.classList.remove('hidden');
+      document.getElementById('backBtn').classList.add('hidden');
+    }, 300);
+  }
+
+  function showLossScreen(reason) {
+    const phrases = {
+      miss: ['Хаха, ты проиграл!', 'Ну ты и дузер...', 'Промазал! Может, ещё разок?', 'Это было больно смотреть 😬', 'Твоя бабушка играет лучше.'],
+      overload: ['Перекрутил! Не надо спамить.', 'Слишком много нажатий, дружок.', 'Ты куда так разогнался?']
+    };
+    const pool = phrases[reason] || phrases.miss;
+    const phrase = pool[Math.floor(Math.random() * pool.length)];
+
+    const lossScreen = document.getElementById('lossScreen');
+    lossScreen.querySelector('.loss-title').textContent = 'ТЫ ПРОИГРАЛ!';
+    lossScreen.querySelector('.loss-title').style.color = '#ff2d55';
+    document.getElementById('lossPhrase').textContent = phrase;
+    document.getElementById('lossScore').textContent =
+      `Счёт: ${state.score} | Макс. комбо: x${state.maxCombo} | Плиток: ${state.tilesPassed}`;
+    lossScreen.classList.remove('hidden');
+    document.getElementById('backBtn').classList.add('hidden');
+
+    if (state.score > state.best) {
+      state.best = state.score;
+      localStorage.setItem('prosto_best', state.best);
+    }
+  }
+
+  // ==================== ОТРИСОВКА ====================
+  function draw() {
+    // Фон — глубокий синий с красноватым оттенком
+    const g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, '#05050c');
+    g.addColorStop(0.5, '#0e0e22');
+    g.addColorStop(1, '#05050c');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // Звёзды в синих тонах
+    ctx.fillStyle = 'rgba(100,140,255,0.15)';
+    for (let i = 0; i < 40; i++) {
+      const sx = (i * 137 + state.elapsed * 0.01) % W;
+      const sy = (i * 89) % H;
+      ctx.fillRect(sx, sy, 1.5, 1.5);
+    }
+
+    // Дорожка (плитки) — красные и синие
+    for (let i = 0; i < path.length; i++) {
+      const t = path[i];
+      let color, glow;
+
+      if (i === orbit.centerIdx) {
+        // Текущая плитка — белая с красным свечением
+        color = '#ffffff';
+        glow = 30;
+      } else if (i === orbit.centerIdx + 1 && state.running) {
+        // Следующая плитка — синяя подсветка (цель)
+        color = '#4d7dff';
+        glow = 20;
+      } else if (t.passed) {
+        // Пройденные — красные
+        color = 'rgba(255,45,85,0.45)';
+        glow = 8;
+      } else {
+        // Будущие — синие тусклые
+        color = 'rgba(77,125,255,0.25)';
+        glow = 0;
+      }
+
+      ctx.save();
+      ctx.translate(t.x, t.y);
+      ctx.rotate(t.angle * Math.PI / 180);
+
+      ctx.shadowColor = color;
+      ctx.shadowBlur = glow;
+      ctx.fillStyle = color;
+      ctx.fillRect(-TILE_SIZE / 2, -TILE_SIZE / 2, TILE_SIZE, TILE_SIZE);
+
+      if (i === orbit.centerIdx) {
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.fillRect(-TILE_SIZE / 2 + 4, -TILE_SIZE / 2 + 4, TILE_SIZE - 8, 3);
+      }
+
+      ctx.restore();
+    }
+
+    // Шарики
+    if (orbit.centerIdx < path.length) {
+      const center = path[orbit.centerIdx];
+
+      // Стационарный шарик
+      const stationaryColor = orbit.stationaryIsFire ? '#ff2d55' : '#4d7dff';
+      ctx.save();
+      ctx.shadowColor = stationaryColor;
+      ctx.shadowBlur = 20;
+      ctx.fillStyle = stationaryColor;
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, 13, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Орбитальный шарик
+      if (orbit.rotating) {
+        const orbitColor = orbit.stationaryIsFire ? '#4d7dff' : '#ff2d55';
+        const ox = center.x + Math.cos(orbit.angle) * orbit.orbitRadius;
+        const oy = center.y + Math.sin(orbit.angle) * orbit.orbitRadius;
+
+        // След орбиты
+        ctx.save();
+        ctx.strokeStyle = 'rgba(100,140,255,0.1)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(center.x, center.y, orbit.orbitRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+
+        // Сам шарик
+        ctx.save();
+        ctx.shadowColor = orbitColor;
+        ctx.shadowBlur = 25;
+        ctx.fillStyle = orbitColor;
+        ctx.beginPath();
+        ctx.arc(ox, oy, 11, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.beginPath();
+        ctx.arc(ox, oy, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // Пунктир к следующей плите
+        if (orbit.centerIdx + 1 < path.length) {
+          const next = path[orbit.centerIdx + 1];
+          ctx.save();
+          ctx.strokeStyle = 'rgba(77,125,255,0.25)';
+          ctx.setLineDash([5, 8]);
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(center.x, center.y);
+          ctx.lineTo(next.x, next.y);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+    }
+
+    // HUD
+    const hud = document.getElementById('hud');
+    if (state.running) {
+      const sec = (state.elapsed / 1000).toFixed(1);
+      hud.textContent = `Счёт: ${state.score}  |  Комбо: x${state.combo}  |  ${sec}с`;
+    } else {
+      hud.textContent = '';
+    }
+  }
+
+  // ==================== ЦИКЛ ====================
+  let lastT = 0;
+  function loop(t) {
+    const dt = Math.min((t - lastT) / 1000, 0.05);
+    lastT = t;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // ==================== UI ====================
+  const menuScreen = document.getElementById('menuScreen');
+  const lossScreen = document.getElementById('lossScreen');
+  const backBtn = document.getElementById('backBtn');
+
+  document.querySelectorAll('[data-diff]').forEach(btn => {
+    btn.addEventListener('click', () => startGame(btn.dataset.diff));
+  });
+
+  document.getElementById('retryBtn').addEventListener('click', () => {
+    if (state.difficulty) startGame(state.difficulty);
+  });
+  document.getElementById('toMenuBtn').addEventListener('click', backToMenu);
+  backBtn.addEventListener('click', backToMenu);
+
+  function backToMenu() {
+    state.running = false;
+    stopMusic();
+    lossScreen.classList.add('hidden');
+    menuScreen.classList.remove('hidden');
+    backBtn.classList.add('hidden');
+    document.getElementById('hud').textContent = '';
+    document.getElementById('judgeText').style.opacity = 0;
+  }
+
+  // Ввод
+  addEventListener('keydown', e => {
+    if (e.code === 'Space') { e.preventDefault(); handleTap(); }
+  });
+  addEventListener('pointerdown', e => {
+    if (e.target.tagName === 'BUTTON' || e.target.classList.contains('switch')) return;
+    handleTap();
+  });
+
+  // Музыка
+  const musicToggle = document.getElementById('musicToggle');
+  musicToggle.addEventListener('click', () => {
+    musicEnabled = !musicEnabled;
+    musicToggle.classList.toggle('on', musicEnabled);
+    if (!musicEnabled) stopMusic();
+    else if (state.running) startMusic(state.difficulty);
+  });
+
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+})();
+</script>
+</body>
+</html>
